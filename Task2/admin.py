@@ -232,7 +232,7 @@ def main():
         )
     
     with col2:
-        json_data = filtered_df.to_json(orient='records', indent=2)
+        json_data = filtered_df.to_json(orient='records', indent=2, default_handler=str)
         st.download_button(
             label="📥 Download as JSON",
             data=json_data,
