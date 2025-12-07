@@ -1,89 +1,189 @@
-import os
-import json
 import streamlit as st
+import os
+from dotenv import load_dotenv
 from datetime import datetime
 from groq import Groq
 from pymongo import MongoClient
+from bson.json_util import default
 
-# MongoDB configuration
+load_dotenv()
+
+st.set_page_config(
+    page_title="Customer Feedback System",
+    page_icon="⭐",
+    layout="centered"
+)
+
 MONGODB_URI = os.getenv("MONGODB_URI")
-DB_NAME = "feedback_system"  # Specify your database name here
-COLLECTION_NAME = "user_feedback"
+DB_NAME = "fynd"  
+COLLECTION_NAME = "user_feedback"    
+
+
+def get_mongo_client():
+    """Get MongoDB client with proper error handling"""
+    try:
+        mongodb_uri = st.secrets.get("MONGODB_URI") or os.getenv("MONGODB_URI")
+    except:
+        mongodb_uri = os.getenv("MONGODB_URI")
+    
+    if not mongodb_uri:
+        st.error("⚠️ MONGODB_URI not found. Please set it in your environment variables or Streamlit secrets.")
+        st.stop()
+    
+    return MongoClient(mongodb_uri)
 
 def get_database():
     """Get MongoDB database connection"""
-    if not MONGODB_URI:
-        st.error("MONGODB_URI environment variable not set")
-        st.stop()
-    client = MongoClient(MONGODB_URI)
+    client = get_mongo_client()
     return client[DB_NAME]
 
 def get_feedback_collection():
-    """Get feedback collection"""
+    """Get feedback collection using the defined COLLECTION_NAME"""
     db = get_database()
     return db[COLLECTION_NAME]
 
-def save_data(data):
-    """Save feedback to MongoDB"""
-    collection = get_feedback_collection()
-    collection.insert_one(data)
+def get_groq_client():
+    try:
+        api_key = st.secrets["GROQ_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        api_key = os.getenv("GROQ_API_KEY")
+    
+    if not api_key:
+        st.error("⚠️ GROQ_API_KEY not found. Please set it in your environment variables or Streamlit secrets.")
+        st.stop()
+    
+    return Groq(api_key=api_key)
 
-def load_all_data():
+def load_data():
     """Load all feedback from MongoDB"""
     collection = get_feedback_collection()
-    return list(collection.find({}, {"_id": 0}))
+    return list(collection.find().sort("_id", -1))
 
-def get_groq_response(user_message):
-    """Get response from Groq API"""
-    client = Groq()
-    completion = client.chat.completions.create(
-        model="mixtral-8x7b-32768",
-        messages=[
-            {"role": "system", "content": "You are a helpful customer feedback analysis assistant."},
-            {"role": "user", "content": user_message}
-        ],
-        temperature=1,
-        max_tokens=1024,
-    )
-    return completion.choices[0].message.content
+def save_data(feedback_entry):
+    """Save feedback entry to MongoDB"""
+    collection = get_feedback_collection()
+    result = collection.insert_one(feedback_entry)
+    return result.inserted_id
+
+def generate_ai_response(rating, review):
+    client = get_groq_client()
+    
+    prompt = f"""You are a customer service AI. A customer has left the following feedback:
+
+Rating: {rating}/5 stars
+Review: {review}
+
+Generate a personalized, empathetic response to this customer. The response should:
+1. Thank them for their feedback
+2. Address their specific concerns or praise
+3. Be warm and professional
+4. Be concise (2-3 sentences)
+
+Response:"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=200
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        st.warning(f"AI response generation failed: {str(e)}")
+        return "Thank you for your feedback! We appreciate you taking the time to share your experience with us."
+
+def generate_summary(review):
+    client = get_groq_client()
+    
+    prompt = f"""Summarize the following customer review in one concise sentence (max 15 words):
+
+Review: {review}
+
+Summary:"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=50
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        st.warning(f"Summary generation failed: {str(e)}")
+        return "Customer feedback received"
+
+def generate_actions(rating, review):
+    client = get_groq_client()
+    
+    prompt = f"""Based on this customer feedback, suggest 2-3 specific actionable next steps for the business:
+
+Rating: {rating}/5 stars
+Review: {review}
+
+Provide only the action items as a bullet-point list. Be specific and practical.
+
+Actions:"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+            max_tokens=200
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        st.warning(f"Actions generation failed: {str(e)}")
+        return "• Review and address customer feedback\n• Follow up with customer if needed"
 
 def main():
-    st.set_page_config(page_title="Customer Feedback System - User", layout="wide")
-    st.title("📝 Customer Feedback Form")
+    st.title("⭐ Customer Feedback System")
+    st.write("We value your opinion! Please share your experience with us.")
     
-    st.markdown("---")
-    
-    with st.form("feedback_form"):
-        st.subheader("Share Your Feedback")
+    with st.form("feedback_form", clear_on_submit=True):
         
-        name = st.text_input("Your Name", placeholder="Enter your name")
-        email = st.text_input("Your Email", placeholder="Enter your email")
-        rating = st.slider("Rate Your Experience", 1, 5, 3)
-        category = st.selectbox("Feedback Category", ["Product", "Service", "Support", "Other"])
-        feedback_text = st.text_area("Your Feedback", placeholder="Tell us what you think...", height=150)
+        st.subheader("How would you rate your experience?")
+        rating = st.slider("Select rating", min_value=1, max_value=5, value=5, 
+                          format="%d ⭐")
         
-        submitted = st.form_submit_button("Submit Feedback")
+        st.subheader("Tell us more about your experience")
+        review = st.text_area("Your review", placeholder="Share your thoughts...", 
+                             height=150, max_chars=10000)
+        
+        submitted = st.form_submit_button("Submit Feedback", use_container_width=True)
         
         if submitted:
-            if not name or not email or not feedback_text:
-                st.error("Please fill in all required fields!")
+            if not review.strip():
+                st.error("Please write a review before submitting.")
             else:
-                feedback_entry = {
-                    "name": name,
-                    "email": email,
-                    "rating": int(rating),
-                    "category": category,
-                    "feedback": feedback_text,
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-                save_data(feedback_entry)
-                st.success("✅ Thank you! Your feedback has been saved.")
-                
-                with st.spinner("Generating AI response..."):
-                    ai_prompt = f"Analyze this customer feedback and provide a brief response:\n\nName: {name}\nRating: {rating}/5\nCategory: {category}\nFeedback: {feedback_text}"
-                    ai_response = get_groq_response(ai_prompt)
-                    st.info(f"**AI Response:**\n\n{ai_response}")
+                with st.spinner("Processing your feedback..."):
+                    
+                    ai_response = generate_ai_response(rating, review)
+                    ai_summary = generate_summary(review)
+                    ai_actions = generate_actions(rating, review)
+                    
+                    feedback_entry = {
+                        "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                        "timestamp": datetime.now().isoformat(),
+                        "rating": rating,
+                        "review": review,
+                        "ai_response": ai_response,
+                        "ai_summary": ai_summary,
+                        "ai_actions": ai_actions
+                    }
+                    
+                    save_data(feedback_entry)
+                    
+                    st.success("✅ Thank you for your feedback!")
+                    st.info(f"**Our Response:**\n\n{ai_response}")
+                    
+                    if rating >= 4:
+                        st.balloons()
+
+    st.markdown("---")
+    st.caption("Your feedback helps us improve our service. Thank you!")
 
 if __name__ == "__main__":
     main()
