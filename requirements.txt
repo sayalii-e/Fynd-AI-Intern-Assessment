@@ -3,3 +3,4 @@ python-dotenv
 groq
 pandas
 plotly
+pymongo 
