@@ -7,38 +7,36 @@ from groq import Groq
 
 load_dotenv()
 
-# Page configuration
 st.set_page_config(
     page_title="Customer Feedback System",
     page_icon="⭐",
     layout="centered"
 )
 
-# Initialize Groq client
 def get_groq_client():
-    api_key = os.getenv("GROQ_API_KEY")
+    try:
+        api_key = st.secrets["GROQ_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        api_key = os.getenv("GROQ_API_KEY")
+    
     if not api_key:
-        st.error("⚠️ GROQ_API_KEY not found. Please set it in your environment variables.")
+        st.error("⚠️ GROQ_API_KEY not found. Please set it in your environment variables or Streamlit secrets.")
         st.stop()
+    
     return Groq(api_key=api_key)
 
+DATA_FILE = "Task2/feedback_data.json"
 
-# File path for data storage
-DATA_FILE = "feedback_data.json"
-
-# Load existing data
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r') as f:
             return json.load(f)
     return []
 
-# Save data
 def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-# Generate AI response using Groq
 def generate_ai_response(rating, review):
     client = get_groq_client()
     
@@ -67,7 +65,6 @@ Response:"""
         st.warning(f"AI response generation failed: {str(e)}")
         return "Thank you for your feedback! We appreciate you taking the time to share your experience with us."
 
-# Generate AI summary
 def generate_summary(review):
     client = get_groq_client()
     
@@ -89,7 +86,6 @@ Summary:"""
         st.warning(f"Summary generation failed: {str(e)}")
         return "Customer feedback received"
 
-# Generate recommended actions
 def generate_actions(rating, review):
     client = get_groq_client()
     
@@ -114,24 +110,22 @@ Actions:"""
         st.warning(f"Actions generation failed: {str(e)}")
         return "• Review and address customer feedback\n• Follow up with customer if needed"
 
-# Main app
 def main():
     st.title("⭐ Customer Feedback System")
     st.write("We value your opinion! Please share your experience with us.")
     
-    # Create form
     with st.form("feedback_form", clear_on_submit=True):
-        # Star rating
+        
         st.subheader("How would you rate your experience?")
         rating = st.slider("Select rating", min_value=1, max_value=5, value=5, 
                           format="%d ⭐")
         
-        # Review text
+        
         st.subheader("Tell us more about your experience")
         review = st.text_area("Your review", placeholder="Share your thoughts...", 
                              height=150, max_chars=10000)
         
-        # Submit button
+        
         submitted = st.form_submit_button("Submit Feedback", use_container_width=True)
         
         if submitted:
@@ -139,12 +133,12 @@ def main():
                 st.error("Please write a review before submitting.")
             else:
                 with st.spinner("Processing your feedback..."):
-                    # Generate AI responses
+                    
                     ai_response = generate_ai_response(rating, review)
                     ai_summary = generate_summary(review)
                     ai_actions = generate_actions(rating, review)
                     
-                    # Create feedback entry
+                    
                     feedback_entry = {
                         "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                         "timestamp": datetime.now().isoformat(),
@@ -155,22 +149,17 @@ def main():
                         "ai_actions": ai_actions
                     }
                     
-                    # Load, append, and save data
                     data = load_data()
                     data.append(feedback_entry)
                     save_data(data)
                     
-                    # Display success message
                     st.success("✅ Thank you for your feedback!")
                     
-                    # Display AI response
                     st.info(f"**Our Response:**\n\n{ai_response}")
                     
-                    # Show balloons for positive ratings
                     if rating >= 4:
                         st.balloons()
 
-    # Footer
     st.markdown("---")
     st.caption("Your feedback helps us improve our service. Thank you!")
 

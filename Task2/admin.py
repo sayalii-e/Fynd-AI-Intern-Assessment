@@ -6,24 +6,20 @@ from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Page configuration
 st.set_page_config(
     page_title="Admin Dashboard",
     page_icon="📊",
     layout="wide"
 )
 
-# File path for data storage
-DATA_FILE = "feedback_data.json"
+DATA_FILE = "Task2/feedback_data.json"
 
-# Load data
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r') as f:
             return json.load(f)
     return []
 
-# Convert data to DataFrame
 def get_dataframe():
     data = load_data()
     if not data:
@@ -34,26 +30,21 @@ def get_dataframe():
     df['date'] = df['timestamp'].dt.date
     return df
 
-# Main app
 def main():
     st.title("📊 Admin Dashboard")
     st.write("Monitor and analyze customer feedback in real-time")
     
-    # Auto-refresh every 30 seconds
     if st.button("🔄 Refresh Data"):
         st.rerun()
     
-    # Add auto-refresh info
     st.caption("Dashboard updates automatically. Click refresh for manual update.")
     
-    # Load data
     df = get_dataframe()
     
     if df.empty:
         st.info("📭 No feedback submissions yet. Waiting for customer reviews...")
         return
     
-    # Key Metrics
     st.header("📈 Key Metrics")
     col1, col2, col3, col4 = st.columns(4)
     
@@ -77,13 +68,12 @@ def main():
     
     st.markdown("---")
     
-    # Visualizations
     st.header("📊 Analytics")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        # Rating Distribution
+        
         rating_counts = df['rating'].value_counts().sort_index()
         fig_ratings = px.bar(
             x=rating_counts.index,
@@ -97,7 +87,7 @@ def main():
         st.plotly_chart(fig_ratings, use_container_width=True)
     
     with col2:
-        # Feedback Over Time
+        
         feedback_by_date = df.groupby('date').size().reset_index(name='count')
         fig_timeline = px.line(
             feedback_by_date,
@@ -112,7 +102,6 @@ def main():
         )
         st.plotly_chart(fig_timeline, use_container_width=True)
     
-    # Sentiment Gauge
     col1, col2, col3 = st.columns(3)
     
     with col2:
@@ -141,7 +130,6 @@ def main():
     
     st.markdown("---")
     
-    # Filters
     st.header("🔍 Feedback Submissions")
     
     col1, col2 = st.columns(2)
@@ -158,10 +146,8 @@ def main():
             options=["Newest First", "Oldest First", "Highest Rating", "Lowest Rating"]
         )
     
-    # Apply filters
     filtered_df = df[df['rating'].isin(filter_rating)]
     
-    # Apply sorting
     if sort_by == "Newest First":
         filtered_df = filtered_df.sort_values('timestamp', ascending=False)
     elif sort_by == "Oldest First":
@@ -173,7 +159,6 @@ def main():
     
     st.write(f"Showing {len(filtered_df)} of {len(df)} submissions")
     
-    # Display submissions
     for idx, row in filtered_df.iterrows():
         with st.expander(
             f"⭐ {row['rating']} stars - {row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}",
@@ -195,11 +180,9 @@ def main():
                 st.subheader("✅ Recommended Actions")
                 st.warning(row['ai_actions'])
                 
-                # Rating indicator
                 stars = "⭐" * row['rating']
                 st.markdown(f"### {stars}")
                 
-                # Sentiment badge
                 if row['rating'] >= 4:
                     st.success("😊 Positive")
                 elif row['rating'] == 3:
@@ -209,7 +192,6 @@ def main():
     
     st.markdown("---")
     
-    # Export data
     st.header("💾 Export Data")
     col1, col2 = st.columns(2)
     
